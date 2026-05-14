@@ -1,0 +1,67 @@
+name: Download Video (360p)
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_urls:
+        description: "Video URLs (one per line)"
+        required: true
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y ffmpeg python3-pip zip
+          pip install -U yt-dlp
+
+      - name: Prepare folders
+        run: |
+          mkdir -p videos
+
+      - name: Download videos
+        run: |
+          echo "${{ github.event.inputs.video_urls }}" > urls.txt
+
+          while IFS= read -r URL
+          do
+            echo "Downloading: $URL"
+
+            yt-dlp \
+            -f "bestvideo[height<=360]+bestaudio/best[height<=360]" \
+            --merge-output-format mp4 \
+            --write-thumbnail \
+            --convert-thumbnails jpg \
+            --restrict-filenames \
+            -o "videos/%(title)s.%(ext)s" \
+            "$URL"
+
+          done < urls.txt
+
+      - name: Create README
+        run: |
+          echo "# Downloaded Videos" > videos/README.md
+          echo "" >> videos/README.md
+
+          for f in videos/*.mp4
+          do
+            NAME=$(basename "$f")
+            echo "- [$NAME](./$NAME)" >> videos/README.md
+          done
+
+      - name: Commit files
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+
+          git add videos
+
+          git commit -m "Add downloaded videos" || echo "Nothing to commit"
+
+          git push
